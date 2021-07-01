@@ -1,0 +1,54 @@
+name: Deploying
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@v2
+    - run: |	
+        mkdir -p ${{ github.workspace }}/artifact
+    - name: Select Xcode
+      run: sudo xcode-select -switch /Applications/Xcode_11.4.app
+    - name: Install gpg
+      run: brew install gnupg
+    - name: Setup provisioning profile
+      env:
+        IOS_KEYS: ${{ secrets.IOS_KEYS }}
+      run: ./.github/secrets/decrypt_secrets.sh
+    - name: Archiving project
+      env:
+        PR_NUMBER: $(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+        ARTIFACT_DIR: ${{ github.workspace }}/artifact
+      run: ./.github/workflows/archive_app.sh
+    - name: Exporting .ipa
+      env:
+        ARTIFACT_DIR: ${{ github.workspace }}/artifact
+      run: ./.github/workflows/export_ipa.sh
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: dicee-ipa
+        path: ${{ github.workspace }}/artifact/**/*
+  upload:
+    name: Upload to App Center
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/download-artifact@v2
+      with:
+        name: dicee-ipa
+    - name: App Center Distribute
+      if: success()
+      uses: wzieba/AppCenter-Github-Action@v1
+      with:
+        appName: <appCenterUserName>/dice-iOS13-Github
+        token: ${{secrets.APP_CENTER_TOKEN}}
+        group: Collaborators
+        file: Dicee-iOS13.ipa
+        notifyTesters: false
+        debug: false

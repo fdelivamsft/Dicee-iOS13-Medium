@@ -1,0 +1,62 @@
+# Xcode
+# Build, test, and archive an Xcode workspace on macOS.
+# Add steps that install certificates, test, sign, and distribute an app, save build artifacts, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/xcode
+
+trigger:
+- main
+
+pool:
+  vmImage: 'macos-latest'
+
+steps:
+- task: InstallAppleCertificate@2
+  inputs:
+    certSecureFile: 'CertificatesFDL.p12'
+    certPwd: $(certificatePassword)
+  displayName: Install Apple Certificate
+
+- task: InstallAppleProvisioningProfile@1
+  inputs:
+    provisioningProfileLocation: 'secureFiles'
+    provProfileSecureFile: 'diceepp.mobileprovision'
+  displayName: Install Provision Profile
+- task: CocoaPods@0
+  inputs:
+    forceRepoUpdate: true
+  displayName: 'pod install using the CocoaPods task with a forced repo update and a custom project directory'
+- task: Xcode@5
+  inputs:
+    actions: 'build'
+    scheme: 'Dicee-iOS13'
+    sdk: 'iphoneos'
+    configuration: 'Release'
+    xcWorkspacePath: 'Dicee-iOS13.xcworkspace'
+    workingDirectory: '$(Build.Repository.LocalPath)'
+    xcodeVersion: 'default' # Options: 8, 9, 10, 11, 12, default, specifyPath
+    packageApp: true
+    destinationPlatformOption: 'iOS'
+    destinationSimulators: 'iPhone 11'
+    signingOption: 'manual'
+    exportMethod: 'Development'
+    exportPath: '$(system.defaultworkingdirectory)'
+    signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
+    provisioningProfileUuid: '$(APPLE_PROV_PROFILE_UUID)'
+    provisioningProfileName: 'diceepp'
+  displayName: 'xcode build'
+- task: CopyFiles@2
+  inputs:
+    contents: '**/*.ipa'
+    targetFolder: '$(build.artifactStagingDirectory)'
+- task: PublishBuildArtifacts@1
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)'
+    artifactName: 'AppCenterTest'
+
+- task: AppCenterDistribute@1
+  inputs:
+    serverEndpoint: 'AppCenter'
+    appSlug: '<appCenterUserName>/dicee-iOS13'
+    appFile: '**/Dicee-iOS13.ipa' # Relative path from the repo root to the APK or IPA file you want to publish
+    releaseNotesOption: 'input'
+    releaseNotesInput: 'Here are the release notes for this version.'
